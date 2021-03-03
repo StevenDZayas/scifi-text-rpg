@@ -1,0 +1,548 @@
+#Error1: "look" doesn't do anything, it just asks again "what would you like to do?" -- FIXED
+#Error2: Movement skips b2, home, when moving "up" from c2, and goes straight up to a2 -- FIXED
+
+#Need a debug option in the game play menu that takes me through the whole intro -- DONE
+
+#3/3/21: Added a basic enemy class, and set a standard enemy in a3 Market zone. Inspect enemy command will print description unique to the enemy instance.
+#Next: Add detail to the help menu accessible at the game start, and make this menu accessible in-game as well, to remind player of the things that they can do. Include "working" things
+#like current location and examine, and note commands that will be added in the future.
+
+import cmd
+import textwrap
+import sys
+import os
+import time
+import random
+from PIL import Image
+
+#Set some basic variables
+screen_width = 100
+
+#--------------------------------
+#Some random function definitions
+
+def slow_type(text):
+    #Displays input text to the screen in a slow manner, similar to old-style
+    #RPGs. Used on a single string.
+    typing_speed = 100 #words-per-minute
+    for character in text:
+        sys.stdout.write(character)
+        sys.stdout.flush()
+        time.sleep(random.random()*10.0/typing_speed)
+
+def get_input(valid_input: list):
+    #An all-purpose function for asking input from the user, and rejecting
+    #invalid inputs. Takes in a list of valid inputs.
+    while True: #Goes on infinitely unless manually broken out of
+        user_entered = input() #standard input call
+
+        if user_entered not in valid_input:
+            #if the user input is not in the list of valid inputs provided...
+            print("Invalid input. Please use one of the following inputs:\n")
+            print(valid_input) #prints the list of valid inputs
+            user_entered = None #resets the input variable to None
+            continue #Not needed, but signifies restart of loop
+
+        else: #If user input IS indeed an available option from valid inputs
+            return user_entered
+
+def display_page_text(lines: list):
+    #Goes through a list of string text, and calls slow_type() function for
+    #each text line in that list.
+    for line in lines:
+        slow_type(line)
+
+        #Allows user the option to press "enter" to skip to the next line
+        get_input([""])
+#--------------------------------
+#Classes
+
+class player:
+    #Class defining the features of the "player" throughout the game.
+    def __init__(self):
+        self.name = ''
+        self.job = ""
+        self.hp = 0
+        self.mp = 0 #magic points
+        self.status_effects = [] #This is a list that will house various effects
+        #on the player status
+        self.location = 'b2' #Default location at start of game, "home"
+        self.game_over = False
+
+myPlayer = player() #Creates an instance of the "player" class. Stays empty for now, since we
+#fill in the info later by player input, or filled in by default with debug command
+
+class enemy:
+    #Class defining the features of standard enemies
+    def __init__(self):
+        self.name = "" #enemy name
+        self.description = "A dark, brooding figure wearing a hood peers at you from between two of the market stalls."
+        self.alive = True #Boolean determining whether enemy is alive or dead
+        self.hp = 100 #basic starting values
+        self.mp = 50 #basic starting values
+        self.status_effects = []
+        self.location = None #Starts out without a location by default
+
+market_Enemy = enemy() #creates an instance of the enemy class
+market_Enemy.location = "a3"
+market_Enemy.name = "Market Thief"
+
+#--------------------------------
+
+######### Title Screen ##########
+
+def title_screen_selections():
+        #Create a switch to control the while loop for incorrect inputs
+        title_switch = False
+        menu_prompt = "Select an option from the menu.\n"
+        invalid_menu_command = "Please enter a valid command.\n"
+        while title_switch == False:
+            slow_type(menu_prompt)
+            option = input(">")
+            if option.lower() == ("play"):
+                setup_game()
+                break
+            elif option.lower() == ("help"):
+                help_menu() #activates the help menu function
+                break
+            elif option.lower() == ("quit"):
+                sys.exit()
+                break
+            elif option.lower() == ("debug"):
+                #At the title screen, when we type "debug", want to bypass all the intro stuff and get straight into gameplay
+                bypass_intro() #calls the bypass_intro
+            elif option.lower() not in ["play","help","quit","debug"]:
+                #When the input is not a valid selection from the title screen,
+                #restart the loop.
+                slow_type(invalid_menu_command)
+                continue
+
+#BYPASS INTRO FUNCTION: allows the user to skip the introductory questions and print statements, to get straight into gameplay for debugging purposes.
+def bypass_intro():
+    #pre-sets name and class to some defaults
+    myPlayer.name = "John Smith (DEFAULT)"
+    myPlayer.job = "warrior"
+    myPlayer.hp = 120
+    myPlayer.mp = 20
+    #go straight into game, without those introductory print statements
+    print("\n")
+    print("####################")
+    print("# Bypass completed. Let's start now! #")
+    print("####################")
+    main_game_loop()
+
+
+def title_screen():
+    os.system("cls")
+    print("############################")
+    print("# Welcome to the Text RPG! #")
+    print("############################")
+    print("           -Play-           ")
+    print("           -Help-           ")
+    print("           -Quit-           ")
+    print("           -Debug-          ")
+    print("   Copyright 2021 S. Zayas  ")
+    title_screen_selections()
+
+def help_menu():
+    print("############################")
+    print("# Welcome to the Text RPG! #")
+    print("############################")
+    print("-Use up, down, left, right to move")
+    print("-Type your commands to do them")
+    print("-Use 'look' to inspect something")
+    print("-Good luck and have fun!")
+    print("\n")
+    title_screen_selections() #Gives the player the option to go back and re-navigate
+
+####MAP ####
+
+
+
+ZONENAME = ""
+DESCRIPTION = "description"
+EXAMINATION = "examine"
+SOLVED = False
+UP = "up", "north"
+DOWN = "down", "south"
+LEFT = "left", "west"
+RIGHT = "right", "east"
+
+
+#Location descriptions:
+#One of these will print out whenever you relocate to a new area.
+city_entrance_description = "Just inside the high stone walls and iron gate, the City Entrance is bathed in the midday sun." \
+                            "The townsfolk bustle about, watched over constantly by the vigilant stares of the heavilg-armed guards. The iron gate is closed shut -- it is impossible to pass.\n" \
+
+market_description = "The Market is filled with the clamor of merchants peddling their wares, and locals haggling prices and services. A dim green light is the only major illumination in the area," \
+                          "besides the flickerings and various glows of tech from the vendor stalls. Smoke rises from the stoves in the noodle shop, casting a warm, robust scent of roasting meats and simmering" \
+                          "noodle dishes to hang in the air. If you require any supplies or services, this is the place to acquire them."
+
+
+home_description = "Your home is a small, yet cozy apartment, standard for residences in the town. A wide window makes up the far-most wall, casting the day's sunlight across your basic, " \
+                   "yet tidy furniture and belongings. You can come here to rest when weary from your travels."
+
+#Need descriptions for all locations!
+
+'''
+What follows is a visual representation of the game map:
+-----------------
+a1 | a2 | a3 | a4
+_________________
+b1 | b2 | b3 | b4
+_________________
+c1 | c2 | c3 | c4
+_________________
+
+a1 = City Entrance 
+a2 = Central Square
+a3 = Market
+a4 = Junkyard
+b1 = Residential District
+b2 = Home
+b3 = Cathedral
+b4 = Graveyard
+c1 = Shipyard
+c2 = Tavern
+c3 = Military Base
+c4 = Hospital
+'''
+
+solved_place = {"a1": False, "a2": False, "a3": False, "a4": False,
+                "b1": False, "b2": False, "b3": False, "b4": False,
+                "c1": False, "c2": False, "c3": False, "c4": False,
+                "d1": False, "d2": False, "d3": False, "d4": False,
+                }
+
+#ZONE DICTIONARY: houses a key for each zone (a1-c4), inside of which is a unique dictionary for each zone that has defining features.
+zonemap = {
+        'a1': {
+            #City entrance is where the gate is held, indicative of the quarantine in effect. The gate should only open at the end of the game, or something. Lots of guards here may make
+        #open combat a bad idea. Surveillance is high.
+            ZONENAME: "City Entrance",
+            DESCRIPTION: "The city entrance is mainly characterized by the massive steel wall, and its centered gate, held in place with towering hydraulics. The area is illuminated with bright "
+                         "spotlights, with few civilians scattered about. Flashlights mounted on the guns of the guards dart frantically here and there, with guards ocassionally stopping to "
+                         "warn a civilian from getting too close to the wall. The gate bears a bright screen along its middle, with the words 'CLOSED -- QUARANTINE IN EFFECT' flashing on it. ",
+            EXAMINATION: "The gate is sealed shut.",
+            SOLVED: False,
+            UP: "",
+            DOWN: "b1",
+            LEFT: "",
+            RIGHT: "a2"
+        },
+        "a2": {
+            #The central square indicates something about the heart of the city, with the central fountain its attraction. The water starts off as being inactive; what would this have to do with
+            #the goal of the game, and how would we turn it on, and for what purpose?
+            ZONENAME: "Central Square",
+            DESCRIPTION: "The central square is a bustle of activity, set in the middle of several intersecting roads. Each street corner bears various shops, with vibrant signs and advertisements "
+                         "on the buildings seeking to grab your attention. A large fountain in the very center is a gathering place for many locals, a twisted steel structure that towers above you.",
+            EXAMINATION: "The fountain does not seem to be active, barely able to dribble a few drops of water with each passing minute.",
+            SOLVED: False,
+            UP: "",
+            DOWN: "b2",
+            LEFT: "a1",
+            RIGHT: "a3",
+        },
+        "a3": {
+            #The market is where you can make purchases, buying items to improve your character, sell items of value to get currency, or trade in valuables to progress the story.
+            #Let's start off with a single merchant.
+            ZONENAME: "Market",
+            DESCRIPTION: "The market is abuzz with noise, with traders haggling over prices, advertisers boasting quality products, and courier bots zooming back and forth overhead. This is the place "
+                         "to make any purchases, or sell anything.",
+            EXAMINATION: "The merchant is available. An enemy stands in the corner.",
+            SOLVED: False,
+            UP: "",
+            DOWN: "b3",
+            LEFT: "a2",
+            RIGHT: "a4",
+        },
+        "a4": {
+            #The junkyard could be used for retrieving discarded tech or other useful gadgets, by use of the crane. You would need to activate it somehow.
+            ZONENAME: "Junkyard",
+            DESCRIPTION: "You overlook the junkyard from a type of promenade atop a high wall, at the base of which is the boundary of the junkyard. Mounds of discarded ship parts and other expired "
+                         "technology dot the area, stretching out quite far. A small structure juts out from the promenade wall to your right, with a towering crane extending from its top.",
+            EXAMINATION: "The crane is held in its LOCKED position.",
+            SOLVED: False,
+            UP: "",
+            DOWN: "b4",
+            LEFT: "a3",
+            RIGHT: "",
+        },
+        "b1": {
+            ZONENAME: "Residential District",
+            DESCRIPTION: "description",
+            EXAMINATION: "examine",
+            SOLVED: False,
+            UP: "a1",
+            DOWN: "c1",
+            LEFT: "",
+            RIGHT: "b2",
+        },
+        "b2": {
+            ZONENAME: "Home",
+            DESCRIPTION: "This is your home, pretty standard for the apartments in the residential district.",
+            EXAMINATION: "Your home looks the same -- nothing has changed.",
+            SOLVED: False,
+            UP: "a2",
+            DOWN: "c2",
+            LEFT: "b1",
+            RIGHT: "b3",
+        },
+        "b3": {
+            ZONENAME: "Cathedral",
+            DESCRIPTION: "cathedral description",
+            EXAMINATION: "examined",
+            SOLVED: False,
+            UP: "a3",
+            DOWN: "c3",
+            LEFT: "b2",
+            RIGHT: "b4",
+        },
+        "b4": {
+            ZONENAME: "Graveyard",
+            DESCRIPTION: "graveyard description",
+            EXAMINATION: "examined",
+            SOLVED: False,
+            UP: "a4",
+            DOWN: "c4",
+            LEFT: "b3",
+            RIGHT: "",
+        },
+        "c1": {
+            ZONENAME: "Shipyard",
+            DESCRIPTION: "shipyard description",
+            EXAMINATION: "examined",
+            SOLVED: False,
+            UP: "b1",
+            DOWN: "",
+            LEFT: "",
+            RIGHT: "c2",
+        },
+        "c2": {
+            ZONENAME: "Tavern",
+            DESCRIPTION: "The interior of the Tavern is lit by the piercing blue of neon drink signs, filled with the roars \n of drunks and the whispers of conspirators -- this place is "
+                         "not for the faint of heart.",
+            EXAMINATION: "examined",
+            SOLVED: False,
+            UP: "b2",
+            DOWN: "",
+            LEFT: "c1",
+            RIGHT: "c3",
+        },
+        "c3": {
+            ZONENAME: "Military Base",
+            DESCRIPTION: "military base description",
+            EXAMINATION: "examined",
+            SOLVED: False,
+            UP: "b3",
+            DOWN: "",
+            LEFT: "c2",
+            RIGHT: "c4",
+        },
+        "c4": {
+            ZONENAME: "Hospital",
+            DESCRIPTION: "hospital description",
+            EXAMINATION: "examined.",
+            SOLVED: False,
+            UP: "b4",
+            DOWN: "",
+            LEFT: "c3",
+            RIGHT: "",
+        },
+
+          }
+
+#######GAME INTERACTIVITY######
+
+#Function to determine if an enemy is alive or dead.
+def check_life_status(enemy):
+    if enemy.hp() > 0:
+        enemy.alive = True
+        print(f"{enemy.name()} is still alive and strong.")
+        return
+    elif enemy.hp() <= 0:
+        enemy.alive = False
+        print(f"{enemy.name()} is dead.")
+        return
+
+
+def print_location():
+    #Prints location name and its description when you move to a new location
+    print("\n" + ("#"*(4+len(myPlayer.location))))
+    print("# " + zonemap[myPlayer.location][ZONENAME] + " #") #prints the new, updated current location
+    print("# " + zonemap[myPlayer.location][DESCRIPTION] + " #") #prints the description value from the zonemap sub dictionary for the current zone
+    print("\n" + ("#" * (4 + len(myPlayer.location))))
+
+def prompt():
+    #Called on an infinite while loop while game is active. Takes in user input and does something in response.
+    acceptable_actions = ["move", "go", "travel", "walk", "quit", "examine", "inspect", "interact",
+                          "look","quit","current location","inspect enemy"]  # List of acceptable action inputs
+    while True:
+
+        print("\n" + "===================")
+        print("What would you like to do?")
+        action = input("> ") #Indicator asking for player input
+        if action.lower() not in acceptable_actions: #as long as the input isn't in the acceptable
+            #inputs, we are gonna keep asking them
+            print("Unknown action, try again.\n")
+            print("Here are all acceptable actions:")
+            print(acceptable_actions)
+            continue
+        if action.lower() == "quit":
+            sys.exit()
+        elif action.lower() in ["move", "go", "travel", "walk"]:
+            player_move(action.lower())
+        elif action.lower() in ["examine", "inspect", "interact", "look"]:
+            player_examine(action.lower())
+        elif action.lower() == "current location":
+            #Allows player to inspect the general area, and get the location description that is called when you enter a zone.
+            print(zonemap[myPlayer.location][DESCRIPTION])
+        elif action.lower() == "inspect enemy":
+            print(market_Enemy.description)
+
+
+def player_move(myAction):
+    #Function called when response to prompt() is a movement command. For each of 4 possible directions, first checks
+    #if the direction command hits a boundary on the map (ex, if player is in a2, they cannot go "up"; if they are in c4,
+    #they cannot go "down" or "right".
+    #If player hits a boundary on the map, calls the bounds function. If not, calls the movement_handler() function, which initiates the movement.
+    while True:
+        ask = "Where would you like to move to?\n"
+        dest = input(ask)
+        if dest in ["up", "north"]:
+            if myPlayer.location in ["a1","a2","a3","a4"]:
+                bounds_function()
+            else:
+                destination = zonemap[myPlayer.location][UP]
+                return movement_handler(destination)
+        elif dest in ["left", "west"]:
+            if myPlayer.location in ["a1","b1","c1"]:
+                bounds_function()
+            else:
+                destination = zonemap[myPlayer.location][LEFT]
+                return movement_handler(destination)
+        elif dest in ["east", "right"]:
+            if myPlayer.location in ["a4","b4","c4"]:
+                bounds_function()
+            else:
+                destination = zonemap[myPlayer.location][RIGHT]
+                return movement_handler(destination)
+        elif dest in ["down", "south"]:
+            if myPlayer.location in ["c1","c2","c3","c4"]:
+                bounds_function()
+            else:
+                destination = zonemap[myPlayer.location][DOWN]
+                return movement_handler(destination)
+        elif dest in ["stay","don't move", "remain"]:
+            print(f"You have chosen to remain in {myPlayer.location}")
+            return
+        else:
+            #If command is NOT in any of the possible directions, reject command and try again
+            print("Sorry, that is not a valid direction. Try again.\n")
+            continue
+
+def bounds_function():
+    #Function that rejects the player's movement command when the chosen direction hits a map boundary. Prints a rejection statement, and returns player to standard prompt.
+    print("Sorry, you cannot go that way; please choose another direction.")
+    return
+
+def movement_handler(destination):
+    myPlayer.location = destination
+    print("\n" + "You have moved to " + myPlayer.location + ",the " + zonemap[myPlayer.location][ZONENAME] + ".")
+    print_location() #Calls the print_location function, which prints the new location and its description from the zonemap dictionary
+
+def player_examine(action):
+    #Fixed a typo that prevented player_examine from being called properly.
+    #Function that is called when player examines their present location; will inform whether there are puzzles to be solved or not, dependant on the SOLVED key value from zonemap dictionary
+    if zonemap[myPlayer.location] == "b2":
+        print("This is your home.")
+    elif zonemap[myPlayer.location][SOLVED]:
+        print("You have already exhausted this zone.")
+    else:
+        print("You can trigger a puzzle here!")
+
+##### GAME FUNCTIONALITY #####
+
+def main_game_loop():
+    #A function that infinitely asks for player input, called once "setup_game()"
+    #is finished, and the start player info has been collected.
+    while myPlayer.game_over is False:
+        prompt()
+    #here handle if puzzles have been solved, boss defeated, explored everything, etc.
+
+def setup_game():
+    #Function called once "start" is selected; asks a sequence of questions
+    #to get initial player info.
+
+    os.system("cls")
+
+
+    ###NAME COLLECTING
+    question1 = "Hello, what's your name?\n"
+    for character in question1:
+        #this allows the text to slowly type out in display; just assume it works
+        sys.stdout.write(character)
+        sys.stdout.flush()
+        time.sleep(0.05)
+    player_name = input(">")
+    myPlayer.name = player_name
+
+    ###JOB HANDLING
+    question2 = "What role do you want to play?\n"
+    question2added = "(You can play as a warrior, mage, or priest)\n"
+    slow_type(question2)
+    slow_type(question2added)
+
+    valid_jobs_switch = False #Controls while loop for incorrect job inputs
+    valid_jobs = ["warrior", "mage", "priest"]
+    while valid_jobs_switch == False:
+        player_job = input(">")
+        if player_job.lower() in valid_jobs:
+            myPlayer.job = player_job
+            print("You are now a " + player_job + "!\n")
+            break
+        elif player_job.lower() not in valid_jobs:
+            print("Sorry, please enter an available class:\n")
+            continue
+    ##### PLAYER STATS
+    if myPlayer.job == "warrior":
+        myPlayer.hp = 120
+        myPlayer.mp = 20
+    elif myPlayer.job == "mage":
+        myPlayer.hp = 40
+        myPlayer.mp = 120
+    elif myPlayer.job == "priest":
+        myPlayer.hp = 60
+        myPlayer.mp = 60
+
+    ### INTRODUCTION
+    question3 = "Welcome, " + player_name + " the " + player_job + ".\n"
+    for character in question3:
+        sys.stdout.write(character)
+        sys.stdout.flush()
+        time.sleep(0.05)
+
+    speech1 = "Welcome to this fantasy world!\n"
+    speech2 = "I hope it greets you well!\n"
+    speech3 = "Just make sure you don't get too lost...\n"
+    speech4 = "Heheheheh...\n"
+    slow_type(speech1)
+    slow_type(speech2)
+    for character in speech3:
+        sys.stdout.write(character)
+        sys.stdout.flush()
+        time.sleep(0.1)
+    for character in speech4:
+        sys.stdout.write(character)
+        sys.stdout.flush()
+        time.sleep(0.2)
+
+    os.system("cls")
+    print("\n")
+    print("####################")
+    print("# Let's start now! #")
+    print("####################")
+    main_game_loop()
+
+
+title_screen()
