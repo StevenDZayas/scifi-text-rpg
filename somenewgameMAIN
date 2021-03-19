@@ -4,6 +4,12 @@
 
 #Next steps: Set up Home Invader enemy to only be inspectable and attackable while player is in the same location, b2. Generalize this for all future enemies. Add enemy attack turn to the combat function.
 
+#3/11/21: Added an empty list to each zone entry in the zonemap dictionary, which can house enemies in that zone. When an enemy populates that zone, both the dictionary entry is updated, AND the enemy instance attribute of
+#enemy.location is updated to reflect that zone name. Then, when in that area, the player can "inspect" or "examine", and the display will tell us that there is an enemy nearby. We can then inspect the enemy, and engage in combat.
+
+#Next steps: Refine the combat system for the Home Invader enemy encounter, such that the home invader can attack you in turn-based combat. Attack values for the enemy should be random, but he should be weak enough that
+#only repeated attacks without countering by the player will result in player death. If player health <=0, add some kind of death mechanic.
+
 import cmd
 import textwrap
 import sys
@@ -45,10 +51,10 @@ def title_screen_selections():
                 slow_type(invalid_menu_command)
                 continue
 
-def slow_type(text):
+def slow_type(text,typing_speed=100):
     #Displays input text to the screen in a slow manner, similar to old-style
     #RPGs. Used on a single string.
-    typing_speed = 100 #words-per-minute
+    #typing_speed = 100 #words-per-minute
     for character in text:
         sys.stdout.write(character)
         sys.stdout.flush()
@@ -114,6 +120,7 @@ def print_location():
 def combat_func(player,enemy):
 
     while enemy.hp > 0:
+        #Player's turn:
         player_prompt = input("It is your turn -- choose your attack!\n>")
         if player_prompt not in ["basic attack","strong attack"]:
             print("Sorry, you must choose an attack.")
@@ -122,9 +129,17 @@ def combat_func(player,enemy):
             #Go into player class, extract attack
             player_attack_value = myPlayer.attacks[player_prompt]
             enemy.hp = enemy.hp - player_attack_value
-            print(f"The enemy health is now {enemy.hp}.")
+            slow_type(f"The enemy health is now {enemy.hp}\n",140)
+            print("\n")
 
-            #Apply attack to enemy
+        #Enemy's turn:
+        enemy_attack_key = random.choice(list(enemy.attacks)) #Randomly selects one of the keys from the enemy attacks dictionary unique to the current enemy being fought.
+        #NOTE: We need to cast the enemy.attacks dictionary keys to a list to use random.choice.
+        enemy_attack_value = enemy.attacks[enemy_attack_key] #Grabs the value from the dictionary using the randomly-selected key
+        myPlayer.hp = myPlayer.hp - enemy_attack_value #Deducts the enemy's attack from the player health, dealing damage
+        slow_type(f"The {enemy.name} has done {enemy_attack_value} damage! Your health is now {myPlayer.hp}.\n",140)
+        continue
+
     print("You have defeated the enemy!")
     return
 
@@ -229,6 +244,11 @@ def player_examine(action):
         print("You have already exhausted this zone.")
     else:
         print("You can trigger a puzzle here!")
+    if zonemap[myPlayer.location][ENEMIES_LIST] == []:
+        slow_type("\nThere are no enemies nearby...")
+    else:
+        slow_type("\nYou can sense danger... There is an ENEMY nearby!")
+    return
 
 #-------------CLASSES-----------
 
@@ -260,7 +280,7 @@ class enemy:
         self.status_effects = []
         self.location = None #Starts out without a location by default
 
-home_Enemy = enemy() #creates an instance of the enemy class
+home_Enemy = enemy() #creates an instance of the enemy class. This is our starting enemy, whose location is in the player home. Allows for easy, quick combat for testing purposes.
 home_Enemy.location = "b2"
 home_Enemy.name = "Home invader"
 home_Enemy.description = "The " + home_Enemy.name + " is present!"
@@ -288,6 +308,7 @@ def bypass_intro():
 ZONENAME = ""
 DESCRIPTION = "description"
 EXAMINATION = "examine"
+ENEMIES_LIST = None
 SOLVED = False
 UP = "up", "north"
 DOWN = "down", "south"
@@ -336,6 +357,7 @@ zonemap = {
                          "spotlights, with few civilians scattered about. Flashlights mounted on the guns of the guards dart frantically here and there, with guards ocassionally stopping to "
                          "warn a civilian from getting too close to the wall. The gate bears a bright screen along its middle, with the words 'CLOSED -- QUARANTINE IN EFFECT' flashing on it. ",
             EXAMINATION: "The gate is sealed shut.",
+            ENEMIES_LIST: [],
             SOLVED: False,
             UP: "",
             DOWN: "b1",
@@ -349,6 +371,7 @@ zonemap = {
             DESCRIPTION: "The central square is a bustle of activity, set in the middle of several intersecting roads. Each street corner bears various shops, with vibrant signs and advertisements "
                          "on the buildings seeking to grab your attention. A large fountain in the very center is a gathering place for many locals, a twisted steel structure that towers above you.",
             EXAMINATION: "The fountain does not seem to be active, barely able to dribble a few drops of water with each passing minute.",
+            ENEMIES_LIST: [],
             SOLVED: False,
             UP: "",
             DOWN: "b2",
@@ -362,6 +385,7 @@ zonemap = {
             DESCRIPTION: "The market is abuzz with noise, with traders haggling over prices, advertisers boasting quality products, and courier bots zooming back and forth overhead. This is the place "
                          "to make any purchases, or sell anything.",
             EXAMINATION: "The merchant is available. An enemy stands in the corner.",
+            ENEMIES_LIST: [],
             SOLVED: False,
             UP: "",
             DOWN: "b3",
@@ -374,6 +398,7 @@ zonemap = {
             DESCRIPTION: "You overlook the junkyard from a type of promenade atop a high wall, at the base of which is the boundary of the junkyard. Mounds of discarded ship parts and other expired "
                          "technology dot the area, stretching out quite far. A small structure juts out from the promenade wall to your right, with a towering crane extending from its top.",
             EXAMINATION: "The crane is held in its LOCKED position.",
+            ENEMIES_LIST: [],
             SOLVED: False,
             UP: "",
             DOWN: "b4",
@@ -384,6 +409,7 @@ zonemap = {
             ZONENAME: "Residential District",
             DESCRIPTION: "description",
             EXAMINATION: "examine",
+            ENEMIES_LIST: [],
             SOLVED: False,
             UP: "a1",
             DOWN: "c1",
@@ -394,6 +420,7 @@ zonemap = {
             ZONENAME: "Home",
             DESCRIPTION: "This is your home, pretty standard for the apartments in the residential district.",
             EXAMINATION: "Your home looks the same -- nothing has changed.",
+            ENEMIES_LIST: [],
             SOLVED: False,
             UP: "a2",
             DOWN: "c2",
@@ -404,6 +431,7 @@ zonemap = {
             ZONENAME: "Cathedral",
             DESCRIPTION: "cathedral description",
             EXAMINATION: "examined",
+            ENEMIES_LIST: [],
             SOLVED: False,
             UP: "a3",
             DOWN: "c3",
@@ -414,6 +442,7 @@ zonemap = {
             ZONENAME: "Graveyard",
             DESCRIPTION: "graveyard description",
             EXAMINATION: "examined",
+            ENEMIES_LIST: [],
             SOLVED: False,
             UP: "a4",
             DOWN: "c4",
@@ -424,6 +453,7 @@ zonemap = {
             ZONENAME: "Shipyard",
             DESCRIPTION: "shipyard description",
             EXAMINATION: "examined",
+            ENEMIES_LIST: [],
             SOLVED: False,
             UP: "b1",
             DOWN: "",
@@ -435,6 +465,7 @@ zonemap = {
             DESCRIPTION: "The interior of the Tavern is lit by the piercing blue of neon drink signs, filled with the roars \n of drunks and the whispers of conspirators -- this place is "
                          "not for the faint of heart.",
             EXAMINATION: "examined",
+            ENEMIES_LIST: [],
             SOLVED: False,
             UP: "b2",
             DOWN: "",
@@ -445,6 +476,7 @@ zonemap = {
             ZONENAME: "Military Base",
             DESCRIPTION: "military base description",
             EXAMINATION: "examined",
+            ENEMIES_LIST: [],
             SOLVED: False,
             UP: "b3",
             DOWN: "",
@@ -455,6 +487,7 @@ zonemap = {
             ZONENAME: "Hospital",
             DESCRIPTION: "hospital description",
             EXAMINATION: "examined.",
+            ENEMIES_LIST: [],
             SOLVED: False,
             UP: "b4",
             DOWN: "",
@@ -464,6 +497,8 @@ zonemap = {
 
           }
 
+#POPULATE ZONES WITH ENEMIES
+zonemap["b2"][ENEMIES_LIST].append(home_Enemy.name)
 
 ##### GAME FUNCTIONALITY #####
 
